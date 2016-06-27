@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+    <link rel="stylesheet" href="/css/style.css" media="screen" title="no title" charset="utf-8">
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.5/angular.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.5/angular-route.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.0/angular-messages.js"></script>
+    <script type="text/javascript">
+      var myApp = angular.module('myApp',['ngRoute','ngMessages'])
+      myApp.config(function($routeProvider){
+        $routeProvider
+          .when('/',{
+            templateUrl:'partials/login.html'
+          })
+          .when('/dashboard',{
+            templateUrl:'partials/dashboard.html'
+          })
+          .when('/create',{
+            templateUrl:'partials/create.html'
+          })
+          .when('/poll/:id',{
+            templateUrl:'partials/poll.html'
+          })
+          .otherwise({
+            redirectTo:'/'
+          })
+      })
+      myApp.factory('userFactory', function($http,$location){
+        var self = this
+        var factory = {}
+        var users = []
+        self.activeUser;
+        factory.getActiveUser = function(callback){
+          console.log('in getActiveUser', self.activeUser);
+
+          callback(self.activeUser)
+        }
+        factory.index = function(callback){
+          $http.get('/users').success(function(users){
+            callback(users)
+            users =users
+          })
+        }
+        factory.login = function(user,callback){
+          var new_user= {name:user}
+          console.log('in login factory',new_user);
+          $http.post('/user',new_user).success(function(data){
+            if(!data.status){
+              console.log(data);
+            }
+            self.activeUser = new_user
+            console.log('activeUser',self.activeUser);
+            $location.url('/dashboard')
+            callback()
+
+
+          })
+        }
+        return factory
+      })
+      myApp.factory('pollFactory', function($http,$location){
+        var factory = {}
+        var polls = []
+        var current_poll;
+        factory.index = function(callback){
+          $http.get('/polls').success(function(polls){
+            callback(polls)
+            polls = polls
+            console.log('PF orders',polls);
+          })
+        }
+
+        factory.getCurrentPoll = function(callback){
+          console.log('pf getCurrentPoll', current_poll);
+          callback(current_poll)
+        }
+
+        factory.create = function(data, callback){
+          console.log('data', data);
+
+          $http.post('/poll', data).success(function(data){
+            if(!data.status){
+              callback(data)
+              // console.log(data);
+            }
+            else {
+              callback()
+              $location.url('/dashboard')
+
+            }
+          })
+        }
+        factory.show = function(id,callback){
+          $http.get("/poll/"+ id).success(function(data){
+            current_poll = data
+            console.log('current_poll',current_poll);
+            callback(data)
+          })
+        }
+        factory.vote = function(poll_id,option_id,callback){
+          console.log('/vote/'+poll_id+'/'+option_id);
+          $http.post('/vote/'+poll_id+'/'+option_id).success(function(data){
+            callback()
+          })
+        }
+
+        factory.destroy = function(id,callback){
+          $http.delete("/poll/"+ id).success(function(data){
+            console.log(data);
+            callback()
+          })
+        }
+        return factory
+
+      })
+      myApp.controller('usersController',function(userFactory){
+        var self = this
+        self.newUser = {}
+        self.users =[]
+        // self.activeUser = userFactory.getActiveUser
+        console.log(self.activeUser);
+
+        var index = function(){
+          userFactory.index(function(data){
+            self.users = data
+          })
+        }
+        index();
+        self.login = function(){
+
+          var self = this
+          console.log('in login controller', self.name);
+          userFactory.login(self.name, function(){
+            console.log('post login');
+          })
+
+        }
+      })
+      myApp.controller('pollsController',function(pollFactory,userFactory,$location){
+        var self = this
+        self.polls = []
+        self.users = []
+        self.activeUser;
+        self.current_poll;
+        self.errors = []
+        var getActiveUser = function(){
+          userFactory.getActiveUser(function(data){
+            if (!data) {
+              $location.url('/')
+            }
+            self.activeUser = data
+          })
+        };
+        var getCurrentPoll = function(){
+          pollFactory.getCurrentPoll(function(data){
+            self.current_poll = data
+            // console.log('current_poll', self.current_poll);
+            // console.log('current_poll.name', self.current_poll.name);
+
+          })
+        }
+        getActiveUser()
+        pollFactory.index(function(data){
+          getCurrentPoll()
+          self.polls = data
+          console.log(self.activeUser);
+
+        })
+        userFactory.index(function(data){
+          self.users = data
+        })
+
+        var index = function(){
+          pollFactory.index(function(data){
+            self.polls = data
+          })
+        }
+        index();
+
+        self.create = function(){
+          console.log('PC', self.new);
+          console.log('activeUser', self.activeUser.name);
+          var new_poll = {
+            name: self.activeUser.name,
+            question: self.new.question,
+            options:[
+              {text:self.new.option1, votes:0},
+              {text:self.new.option2, votes:0},
+              {text:self.new.option3, votes:0},
+              {text:self.new.option4, votes:0},
+            ]
+          }
+
+          console.log('NEW POLL',new_poll);
+          pollFactory.create(new_poll,function(data){
+            if (data) {
+              self.errors = data
+              console.log('PC create',self.errors);
+              index()
+            }
+            else {
+              console.log('PC create',data);
+              index()
+
+            }
+
+
+
+          })
+          self.new = ''
+        }
+        self.vote = function(poll_id,option_id){
+          console.log('vote', poll_id,option_id);
+          pollFactory.vote(poll_id,option_id,function(){
+            pollFactory.show(poll_id,function(data_from_factory){
+              console.log(data_from_factory);
+              self.current_poll = data_from_factory
+            })
+          })
+        }
+
+      })
+      myApp.controller('dashboardController',function(pollFactory,userFactory,$location){
+        var self = this
+        self.polls = []
+        self.users = []
+        self.activeUser;
+        self.current_poll;
+
+        var getActiveUser = function(){
+          userFactory.getActiveUser(function(data){
+            if (!data) {
+              $location.url('/')
+            }
+            self.activeUser = data
+          })
+        };
+
+        // console.log('activeUser',self.activeUser);
+        pollFactory.index(function(data){
+          self.polls = data
+          getActiveUser()
+          console.log(self.activeUser);
+
+        })
+        userFactory.index(function(data){
+          self.users = data
+        })
+
+        var index = function(){
+          pollFactory.index(function(data){
+            self.polls = data
+          })
+        }
+        index();
+        self.show = function(info){
+          id = info
+          console.log(id);
+          pollFactory.show(id,function(id){
+            self.current_poll = info
+            $location.url('/poll/'+self.current_poll)
+          })
+        }
+
+        self.create = function(){
+          console.log('PC', self.new);
+          console.log('activeUser', self.activeUser.name);
+          var new_poll = {name: self.activeUser.name, question: self.new.question, option1: self.new.option1, option2: self.new.option2, option3: self.new.option3,option4: self.new.option4}
+          console.log('NEW POLL',new_poll);
+          pollFactory.create(new_poll,index)
+          self.new = ''
+        }
+        self.destroy = function(data){
+          pollFactory.destroy(data,index)
+        }
+      })
+
+
+    </script>
+  </head>
+  <body>
+    <div ng-app="myApp">
+      <div ng-view="">
+
+      </div>
+    </div>
+  </body>
+</html>
